@@ -54,7 +54,7 @@ Bu proje, .NET 9 kullanarak gelistirilmis modern mikroservis mimarisini gosterir
 - Docker Desktop
 - Git
 
-### Adim 1: Repository'yi klonlayingit clone https://github.com/[username]/dotnet-microservices-architecture.git
+### Adim 1: Repository'yi klonlayin git clone https://github.com/[username]/dotnet-microservices-architecture.git
 cd dotnet-microservices-architecture
 ### Adim 2: Docker ile servisleri baslatindocker-compose up -d
 ### Adim 3: Veritabani migration'larini calistirin# Her mikroservis icin migration calistirin
@@ -104,28 +104,29 @@ PgAdmin web arayuzune http://localhost:5050 adresinden erisebilirsiniz:
 
 ## ?? Gelistirme
 
-### Proje Yapisi??? AuhtServer.Api/              # Auth mikroservisi
-?   ??? Controllers/             # API controllers
-?   ??? Dockerfile              # Docker configuration
-?   ??? AuhtServer.Api.csproj   # Project file
-??? Authserver.Application/      # Auth application layer
-??? Authserver.Infrastructure/   # Auth infrastructure layer
-??? AuthServerDomain/           # Auth domain layer
-??? Customer.Api/               # Customer mikroservisi
-??? Customer.Application/       # Customer application layer
-??? Customer.Infrastructure/    # Customer infrastructure layer
-??? Customer.Domain/           # Customer domain layer
-??? Product.Api/               # Product mikroservisi
-??? Product.Application/       # Product application layer
-??? Product.Infrastructure/    # Product infrastructure layer
-??? Product.Domain/           # Product domain layer
-??? Order.Api/                # Order mikroservisi
-??? Order.Application/        # Order application layer
-??? Order.Infrastructures/    # Order infrastructure layer
-??? Order.Domain/            # Order domain layer
-??? SharedLibrary/           # Ortak kutuphaneler
-??? docker-compose.yml       # Docker orchestration
-??? README.md               # Bu dosya
+### Proje Yapisi
+??? AuhtServer.Api/             
+?   ??? Controllers/           
+?   ??? Dockerfile             
+?   ??? AuhtServer.Api.csproj 
+??? Authserver.Application/      
+??? Authserver.Infrastructure/  
+??? AuthServerDomain/           
+??? Customer.Api/               
+??? Customer.Application/       
+??? Customer.Infrastructure/   
+??? Customer.Domain/           
+??? Product.Api/               
+??? Product.Application/       
+??? Product.Infrastructure/    
+??? Product.Domain/           
+??? Order.Api/               
+??? Order.Application/        
+??? Order.Infrastructures/    
+??? Order.Domain/         
+??? SharedLibrary/          
+??? docker-compose.yml       
+??? README.md               
 ### Clean Architecture Katmanlari
 - **API Layer** - Controllers ve endpoints
 - **Application Layer** - Business logic, CQRS handlers ve MediatR
