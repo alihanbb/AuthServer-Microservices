@@ -1,0 +1,199 @@
+version: '3.8'
+
+services:
+
+  auhtserver.api:
+    image: ${DOCKER_REGISTRY-}auhtserverapi
+    build:
+      context: .
+      dockerfile: AuhtServer.Api/Dockerfile
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      - postgres_authserver
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080;https://+:8081
+      - ConnectionStrings__AuthServerDb=Host=postgres_authserver;Database=AuthServerDb;Username=authserver;Password=authserver123
+      - Jwt__Key=supersecretkeythisstrong12345678
+      - Jwt__Issuer=AuthServer
+      - Jwt__Audience=AuthClients
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=rabbitmq
+      - RabbitMQ__Password=rabbitmq123
+    networks:
+      - microservices-network
+
+  customer.api:
+    image: ${DOCKER_REGISTRY-}customerapi
+    build:
+      context: .
+      dockerfile: Customer.Api/Dockerfile
+    ports:
+      - "8082:80"
+      - "8083:443"
+    depends_on:
+      - postgres_customer
+      - rabbitmq
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80;https://+:443
+      - ConnectionStrings__CustomerDbConnection=Host=postgres_customer;Database=CustomerDb;Username=customeradmin;Password=customer123
+      - Jwt__Key=supersecretkeythisstrong12345678
+      - Jwt__Issuer=AuthServer
+      - Jwt__Audience=AuthClients
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=rabbitmq
+      - RabbitMQ__Password=rabbitmq123
+    networks:
+      - microservices-network
+      
+  order.api:
+    image: ${DOCKER_REGISTRY-}orderapi
+    build:
+      context: .
+      dockerfile: Order.Api/Dockerfile
+    ports:
+      - "8084:80"
+      - "8085:443"
+    depends_on:
+      - postgres_order
+      - rabbitmq
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80;https://+:443
+      - ConnectionStrings__OrderConnection=Host=postgres_order;Database=OrderDb;Username=orderadmin;Password=order123
+      - Jwt__Key=supersecretkeythisstrong12345678
+      - Jwt__Issuer=AuthServer
+      - Jwt__Audience=AuthClients
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=rabbitmq
+      - RabbitMQ__Password=rabbitmq123
+    networks:
+      - microservices-network
+      
+  product.api:
+    image: ${DOCKER_REGISTRY-}productapi
+    build:
+      context: .
+      dockerfile: Product.Api/Dockerfile
+    ports:
+      - "8086:80"
+      - "8087:443"
+    depends_on:
+      - postgres_product
+      - rabbitmq
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80;https://+:443
+      - ConnectionStrings__ProductDbConnections=Host=postgres_product;Database=ProductDb;Username=productadmin;Password=product123
+      - Jwt__Key=supersecretkeythisstrong12345678
+      - Jwt__Issuer=AuthServer
+      - Jwt__Audience=AuthClients
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=rabbitmq
+      - RabbitMQ__Password=rabbitmq123
+    networks:
+      - microservices-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: microservices-rabbitmq
+    ports:
+      - "5672:5672"   # RabbitMQ standard port
+      - "15672:15672" # Management interface port
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbitmq
+      - RABBITMQ_DEFAULT_PASS=rabbitmq123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - microservices-network
+
+  postgres_authserver:
+    image: postgres:16
+    container_name: authserver-postgres
+    environment:
+      POSTGRES_DB: AuthServerDb
+      POSTGRES_USER: authserver
+      POSTGRES_PASSWORD: authserver123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_authserver_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  postgres_product:
+    image: postgres:16
+    container_name: product-postgres
+    environment:
+      POSTGRES_DB: ProductDb
+      POSTGRES_USER: productadmin
+      POSTGRES_PASSWORD: product123
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_product_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+  
+  postgres_customer:
+    image: postgres:16
+    container_name: customer-postgres
+    environment:
+      POSTGRES_DB: CustomerDb
+      POSTGRES_USER: customeradmin
+      POSTGRES_PASSWORD: customer123
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_customer_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  postgres_order:
+    image: postgres:16
+    container_name: order-postgres
+    environment:
+      POSTGRES_DB: OrderDb
+      POSTGRES_USER: orderadmin
+      POSTGRES_PASSWORD: order123
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: microservices-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@authserver.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres_authserver
+      - postgres_customer
+      - postgres_product
+      - postgres_order 
+    networks:
+      - microservices-network
+
+volumes:
+  postgres_authserver_data:
+  postgres_customer_data:
+  postgres_order_data:
+  postgres_product_data:
+  rabbitmq_data:
+
+networks:
+  microservices-network:
+    driver: bridge

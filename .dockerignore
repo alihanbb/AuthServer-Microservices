@@ -1,0 +1,55 @@
+# Exclude development and Git files
+.git/
+.github/
+.gitignore
+.vs/
+.vscode/
+.idea/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Exclude build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+# Exclude NuGet packages
+*.nupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Exclude documentation files
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# Exclude Docker files (they'll be copied separately)
+**/Dockerfile*
+**/.dockerignore*
+docker-compose*
+.env
+
+# Exclude testing projects
+**/*[Tt]ests/
+**/*[Tt]est[Pp]roject/
+**/*[Tt]est[Aa]pp/
+
+# Exclude other files
+**/*.log
+**/*.txt
+**/*.bak
+**/*.DS_Store

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  order.api:
+    image: order-api
+    build:
+      context: .
+      dockerfile: Order.Api/Dockerfile
+    ports:
+      - "5005:80"
+      - "5006:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:443;http://+:80
+      - ConnectionStrings__OrderConnection=Host=postgres_order;Database=OrderDb;Username=orderadmin;Password=order123
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=password
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    depends_on:
+      - postgres_order
+    networks:
+      - order-network
+    volumes:
+      - ${USERPROFILE}/.aspnet/https:/https/
+
+  postgres_order:
+    image: postgres:latest
+    container_name: postgres_order
+    environment:
+      - POSTGRES_USER=orderadmin
+      - POSTGRES_PASSWORD=order123
+      - POSTGRES_DB=OrderDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+    networks:
+      - order-network
+
+networks:
+  order-network:
+    driver: bridge
+
+volumes:
+  postgres_order_data:
