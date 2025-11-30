@@ -2,119 +2,25 @@ version: '3.8'
 
 services:
 
-  auhtserver.api:
-    image: ${DOCKER_REGISTRY-}auhtserverapi
-    build:
-      context: .
-      dockerfile: AuhtServer.Api/Dockerfile
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: authserver-redis
     ports:
-      - "8080:8080"
-      - "8081:8081"
-    depends_on:
-      - postgres_authserver
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8080;https://+:8081
-      - ConnectionStrings__AuthServerDb=Host=postgres_authserver;Database=AuthServerDb;Username=authserver;Password=authserver123
-      - Jwt__Key=supersecretkeythisstrong12345678
-      - Jwt__Issuer=AuthServer
-      - Jwt__Audience=AuthClients
-      - RabbitMQ__Host=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__Username=rabbitmq
-      - RabbitMQ__Password=rabbitmq123
-    networks:
-      - microservices-network
-
-  customer.api:
-    image: ${DOCKER_REGISTRY-}customerapi
-    build:
-      context: .
-      dockerfile: Customer.Api/Dockerfile
-    ports:
-      - "8082:80"
-      - "8083:443"
-    depends_on:
-      - postgres_customer
-      - rabbitmq
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80;https://+:443
-      - ConnectionStrings__CustomerDbConnection=Host=postgres_customer;Database=CustomerDb;Username=customeradmin;Password=customer123
-      - Jwt__Key=supersecretkeythisstrong12345678
-      - Jwt__Issuer=AuthServer
-      - Jwt__Audience=AuthClients
-      - RabbitMQ__Host=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__Username=rabbitmq
-      - RabbitMQ__Password=rabbitmq123
-    networks:
-      - microservices-network
-      
-  order.api:
-    image: ${DOCKER_REGISTRY-}orderapi
-    build:
-      context: .
-      dockerfile: Order.Api/Dockerfile
-    ports:
-      - "8084:80"
-      - "8085:443"
-    depends_on:
-      - postgres_order
-      - rabbitmq
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80;https://+:443
-      - ConnectionStrings__OrderConnection=Host=postgres_order;Database=OrderDb;Username=orderadmin;Password=order123
-      - Jwt__Key=supersecretkeythisstrong12345678
-      - Jwt__Issuer=AuthServer
-      - Jwt__Audience=AuthClients
-      - RabbitMQ__Host=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__Username=rabbitmq
-      - RabbitMQ__Password=rabbitmq123
-    networks:
-      - microservices-network
-      
-  product.api:
-    image: ${DOCKER_REGISTRY-}productapi
-    build:
-      context: .
-      dockerfile: Product.Api/Dockerfile
-    ports:
-      - "8086:80"
-      - "8087:443"
-    depends_on:
-      - postgres_product
-      - rabbitmq
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80;https://+:443
-      - ConnectionStrings__ProductDbConnections=Host=postgres_product;Database=ProductDb;Username=productadmin;Password=product123
-      - Jwt__Key=supersecretkeythisstrong12345678
-      - Jwt__Issuer=AuthServer
-      - Jwt__Audience=AuthClients
-      - RabbitMQ__Host=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__Username=rabbitmq
-      - RabbitMQ__Password=rabbitmq123
-    networks:
-      - microservices-network
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: microservices-rabbitmq
-    ports:
-      - "5672:5672"   # RabbitMQ standard port
-      - "15672:15672" # Management interface port
-    environment:
-      - RABBITMQ_DEFAULT_USER=rabbitmq
-      - RABBITMQ_DEFAULT_PASS=rabbitmq123
+      - "6379:6379"
+    command: redis-server --appendonly yes
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - redis_data:/data
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
+  # PostgreSQL - AuthServer Database
   postgres_authserver:
     image: postgres:16
     container_name: authserver-postgres
@@ -128,7 +34,14 @@ services:
       - postgres_authserver_data:/var/lib/postgresql/data
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U authserver -d AuthServerDb" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
+  # PostgreSQL - Product Database
   postgres_product:
     image: postgres:16
     container_name: product-postgres
@@ -142,7 +55,14 @@ services:
       - postgres_product_data:/var/lib/postgresql/data
     networks:
       - microservices-network
-  
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U productadmin -d ProductDb" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostgreSQL - Customer Database
   postgres_customer:
     image: postgres:16
     container_name: customer-postgres
@@ -156,7 +76,14 @@ services:
       - postgres_customer_data:/var/lib/postgresql/data
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U customeradmin -d CustomerDb" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
+  # PostgreSQL - Order Database
   postgres_order:
     image: postgres:16
     container_name: order-postgres
@@ -170,7 +97,14 @@ services:
       - postgres_order_data:/var/lib/postgresql/data
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U orderadmin -d OrderDb" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
+  # PgAdmin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: microservices-pgadmin
@@ -183,16 +117,23 @@ services:
       - postgres_authserver
       - postgres_customer
       - postgres_product
-      - postgres_order 
+      - postgres_order
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/misc/ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
+  redis_data:
   postgres_authserver_data:
   postgres_customer_data:
   postgres_order_data:
   postgres_product_data:
-  rabbitmq_data:
+
 
 networks:
   microservices-network:
