@@ -3,6 +3,7 @@ using AuthServer.Domain.Entities;
 using AuthServer.Infrastructure.Persistence;
 using AuthServer.Redis.Extensions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,35 +48,16 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
-// Seed Data
+// Database Migration & Seed Data
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-    await context.Database.EnsureCreatedAsync();
+    
+    // Apply pending migrations
+    await context.Database.MigrateAsync();
 
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<AppRole>>();
-
-    // Create Admin role
-    if (!await roleManager.RoleExistsAsync("Admin"))
-    {
-        await roleManager.CreateAsync(new AppRole { Name = "Admin" });
-    }
-
-    // Create test user
-    if (await userManager.FindByNameAsync("admin") == null)
-    {
-        var admin = new AppUser
-        {
-            UserName = "admin",
-            Email = "admin@authserver.com",
-            EmailConfirmed = true,
-            FirstName = "Admin",
-            LastName = "User"
-        };
-        await userManager.CreateAsync(admin, "Admin123!");
-        await userManager.AddToRoleAsync(admin, "Admin");
-    }
+    // Seed data
+    await AuthServer.Infrastructure.Data.DataSeeder.SeedAsync(scope.ServiceProvider);
 }
 
 app.Run();

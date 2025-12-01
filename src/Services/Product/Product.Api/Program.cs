@@ -1,56 +1,63 @@
 using FluentValidation;
+using HealthChecks.UI.Client;
 using MediatR;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using Product.Application.Behavior;
-using Product.Application.Services;
+using Product.Application.Commands.CreateProduct;
+using Product.Application.Queries.GetProduct;
+using Product.Infrastructure.Consumers;
 using Product.Infrastructure.Products;
-using Product.Infrastructure.EventConsumers;
 using Scalar.AspNetCore;
-using SharedLibrary.Messaging;
+using SharedBus.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+// Database
+builder.Services.AddDbContext<ProductDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("ProductConnection")));
 
-builder.Services.AddScoped<IProductService, ProductService>();
-builder.Services.AddDbContext<ProductBaseDbContext>(opt =>
+builder.Services.AddScoped<IProductDbContext>(sp => sp.GetRequiredService<ProductDbContext>());
+
+// MediatR
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(CreateProductCommand).Assembly));
+
+// FluentValidation
+builder.Services.AddValidatorsFromAssembly(typeof(CreateProductCommand).Assembly);
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(Product.Application.Behavior.ValidationBehavior<,>));
+
+// MassTransit with Azure Service Bus
+builder.Services.AddSharedBusWithAzureServiceBus(builder.Configuration, "ProductService", x =>
 {
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("ProductDbConnections"));
+    x.AddConsumer<UpdateProductStockConsumer>();
 });
 
-builder.Services.AddAutoMapper(typeof(Product.Infrastructure.AssemblyReference).Assembly);
-builder.Services.AddMediatR(cfg => 
-cfg.RegisterServicesFromAssembly(typeof(Product.Application.AssemblyReference).Assembly));
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("ProductConnection")!,
+        name: "product-database",
+        tags: new[] { "database", "postgresql" })
+    .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "api" });
 
-builder.Services.AddValidatorsFromAssembly(typeof(Product.Application.AssemblyReference).Assembly);
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-
-// MassTransit RabbitMQ Integration with Order Event Consumers
-builder.Services.AddMassTransitWithRabbitMq("ProductService", x =>
+builder.Services.AddHealthChecksUI(setup =>
 {
-    // Add order event consumers
-    x.AddConsumer<OrderCreatedEventConsumer>();
-    x.AddConsumer<OrderStatusChangedEventConsumer>();
-    x.AddConsumer<OrderDeletedEventConsumer>();
-});
+    setup.SetEvaluationTimeInSeconds(30);
+    setup.AddHealthCheckEndpoint("Product API", "/health");
+}).AddInMemoryStorage();
 
-// OpenIddict Validation Configuration
+// OpenIddict Validation
 builder.Services.AddOpenIddict()
     .AddValidation(options =>
     {
-        // Set the issuer (AuthServer URL)
-        options.SetIssuer("http://auhtserver.api:8080/");
+        options.SetIssuer("http://authserver.api:8080/");
         options.AddAudiences("product-api");
-
-        // Configure introspection endpoint
         options.UseIntrospection()
                .SetClientId("product-api")
                .SetClientSecret("product-secret-key-2024");
-
         options.UseAspNetCore();
     });
 
-// Configure authentication to use OpenIddict
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
@@ -58,38 +65,72 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    // Scope-based policies
-    options.AddPolicy("ProductRead", policy => 
-        policy.RequireClaim("scope", "product.read"));
-    
-    options.AddPolicy("ProductWrite", policy => 
-        policy.RequireClaim("scope", "product.write"));
-    
-    // Role-based policies (for backward compatibility)
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("UserOnly", policy => policy.RequireRole("User"));
-    options.AddPolicy("StaffOnly", policy => policy.RequireRole("Staff"));
-    options.AddPolicy("ManagerOnly", policy => policy.RequireRole("Manager")); 
+    options.AddPolicy("ProductRead", policy => policy.RequireClaim("scope", "product.read"));
+    options.AddPolicy("ProductWrite", policy => policy.RequireClaim("scope", "product.write"));
 });
 
-builder.Services.AddEndpointsApiExplorer();
+// OpenAPI
 builder.Services.AddOpenApi();
-
 
 var app = builder.Build();
 
+// Configure pipeline
 if (app.Environment.IsDevelopment())
 {
-  
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
-app.MapOpenApi();
-app.MapScalarApiReference();
 
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+// Minimal API Endpoints
+var productsGroup = app.MapGroup("/api/products")
+    .WithTags("Products")
+    .WithOpenApi();
 
+// POST /api/products - Create Product
+productsGroup.MapPost("/", async (CreateProductCommand command, IMediator mediator) =>
+{
+    var result = await mediator.Send(command);
+    return Results.Created($"/api/products/{result.ProductId}", result);
+})
+.RequireAuthorization("ProductWrite")
+.WithName("CreateProduct")
+.WithSummary("Create a new product")
+.WithDescription("Creates a new product in the catalog");
+
+// GET /api/products/{id} - Get Product
+productsGroup.MapGet("/{id:guid}", async (Guid id, IMediator mediator) =>
+{
+    var query = new GetProductQuery { Id = id };
+    var result = await mediator.Send(query);
+    return result is not null ? Results.Ok(result) : Results.NotFound();
+})
+.RequireAuthorization("ProductRead")
+.WithName("GetProduct")
+.WithSummary("Get product by ID")
+.WithDescription("Retrieves product details by product ID");
+
+// Health Check Endpoints
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecksUI(options =>
+{
+    options.UIPath = "/health-ui";
+    options.ApiPath = "/health-api";
+});
+
+// Apply migrations on startup (for development)
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<ProductDbContext>();
+    await context.Database.MigrateAsync();
+}
 
 app.Run();

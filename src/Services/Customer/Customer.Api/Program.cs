@@ -1,56 +1,62 @@
-using Customer.Application.Behavior;
-using Customer.Application.Customer.Services;
-using Customer.Infrastructure.Customer;
-using Customer.Infrastructure.EventConsumers;
 using FluentValidation;
+using HealthChecks.UI.Client;
 using MediatR;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Customer.Application.Commands.CreateCustomer;
+using Customer.Infrastructure.Consumers;
+using Customer.Infrastructure.Customer;
 using Scalar.AspNetCore;
-using SharedLibrary.Messaging;
+using SharedBus.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Database
 builder.Services.AddDbContext<CustomerDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("CustomerDbConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("CustomerConnection")));
 
+builder.Services.AddScoped<ICustomerDbContext>(sp => sp.GetRequiredService<CustomerDbContext>());
 
-builder.Services.AddScoped<ICustomerService, CustomerServices>();
-builder.Services.AddControllers();
-builder.Services.AddOpenApi();
-
-builder.Services.AddAutoMapper(typeof(Customer.Infrastructure.AssemblyReference).Assembly);
+// MediatR
 builder.Services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssembly(typeof(Customer.Application.AssemblyReference).Assembly));
+    cfg.RegisterServicesFromAssembly(typeof(CreateCustomerCommand).Assembly));
 
-builder.Services.AddValidatorsFromAssembly(typeof(Customer.Application.AssemblyReference).Assembly);
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+// FluentValidation
+builder.Services.AddValidatorsFromAssembly(typeof(CreateCustomerCommand).Assembly);
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(Customer.Application.Behavior.ValidationBehavior<,>));
 
-// MassTransit RabbitMQ Integration with Order Event Consumers
-builder.Services.AddMassTransitWithRabbitMq("CustomerService", x =>
+// MassTransit with Azure Service Bus
+builder.Services.AddSharedBusWithAzureServiceBus(builder.Configuration, "CustomerService", x =>
 {
-    // Add order event consumers
-    x.AddConsumer<OrderCreatedEventConsumer>();
-    x.AddConsumer<OrderStatusChangedEventConsumer>();
-    x.AddConsumer<OrderDeletedEventConsumer>();
+    x.AddConsumer<ValidateCustomerConsumer>();
 });
 
-// OpenIddict Validation Configuration
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("CustomerConnection")!,
+        name: "customer-database",
+        tags: new[] { "database", "postgresql" })
+    .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "api" });
+
+builder.Services.AddHealthChecksUI(setup =>
+{
+    setup.SetEvaluationTimeInSeconds(30);
+    setup.AddHealthCheckEndpoint("Customer API", "/health");
+}).AddInMemoryStorage();
+
+// OpenIddict Validation
 builder.Services.AddOpenIddict()
     .AddValidation(options =>
     {
-        // Set the issuer (AuthServer URL)
-        options.SetIssuer("http://auhtserver.api:8080/");
+        options.SetIssuer("http://authserver.api:8080/");
         options.AddAudiences("customer-api");
-
-        // Configure introspection endpoint
         options.UseIntrospection()
                .SetClientId("customer-api")
                .SetClientSecret("customer-secret-key-2024");
-
         options.UseAspNetCore();
     });
 
-// Configure authentication to use OpenIddict
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
@@ -58,32 +64,60 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    // Scope-based policies
-    options.AddPolicy("CustomerRead", policy => 
-        policy.RequireClaim("scope", "customer.read"));
-    
-    options.AddPolicy("CustomerWrite", policy => 
-        policy.RequireClaim("scope", "customer.write"));
-    
-    // Role-based policies (for backward compatibility)
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("UserOnly", policy => policy.RequireRole("User")); 
-    options.AddPolicy("StaffOnly", policy => policy.RequireRole("Staff"));
-    options.AddPolicy("ManagerOnly", policy => policy.RequireRole("Manager"));
+    options.AddPolicy("CustomerRead", policy => policy.RequireClaim("scope", "customer.read"));
+    options.AddPolicy("CustomerWrite", policy => policy.RequireClaim("scope", "customer.write"));
 });
+
+// OpenAPI
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+// Configure pipeline
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+// Minimal API Endpoints
+var customersGroup = app.MapGroup("/api/customers")
+    .WithTags("Customers")
+    .WithOpenApi();
+
+// POST /api/customers - Create Customer
+customersGroup.MapPost("/", async (CreateCustomerCommand command, IMediator mediator) =>
+{
+    var result = await mediator.Send(command);
+    return Results.Created($"/api/customers/{result.CustomerId}", result);
+})
+.RequireAuthorization("CustomerWrite")
+.WithName("CreateCustomer")
+.WithSummary("Create a new customer")
+.WithDescription("Creates a new customer in the system");
+
+// Health Check Endpoints
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecksUI(options =>
+{
+    options.UIPath = "/health-ui";
+    options.ApiPath = "/health-api";
+});
+
+// Apply migrations on startup (for development)
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<CustomerDbContext>();
+    await context.Database.MigrateAsync();
+}
+
 app.Run();

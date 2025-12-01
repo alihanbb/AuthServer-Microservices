@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.2" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="9.0.2" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.2" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.2" />
     <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.0" />
     <PackageReference Include="FluentValidation" Version="12.0.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.0.0" />
@@ -25,10 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Order.Infrastructures\Order.Infrastructures.csproj" />
+    <ProjectReference Include="..\Order.Infrastructure\Order.Infrastructure.csproj" />
     <ProjectReference Include="..\Order.Application\Order.Application.csproj" />
-    <ProjectReference Include="..\SharedLibrary\SharedLibrary.csproj" />
- 
+    <ProjectReference Include="..\..\..\Shared\SharedBus\SharedBus.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,57 +1,67 @@
 using FluentValidation;
+using HealthChecks.UI.Client;
 using MediatR;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using Order.Application.Order.Services;
-using Order.Infrastructures.Order;
-using Order.Application.Behavior;
+using Order.Application.Commands.CreateOrder;
+using Order.Application.Queries.GetOrder;
+using Order.Infrastructure.Consumers;
+using Order.Infrastructure.Persistence;
 using Scalar.AspNetCore;
-using SharedLibrary.Messaging;
-using Order.Infrastructures.EventConsumers;
+using SharedBus.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Database
 builder.Services.AddDbContext<OrderDbContext>(options =>
-{
-    options.UseNpgsql(builder.Configuration.GetConnectionString("OrderConnection"));
-});
+    options.UseNpgsql(builder.Configuration.GetConnectionString("OrderConnection")));
 
+builder.Services.AddScoped<IOrderDbContext>(sp => sp.GetRequiredService<OrderDbContext>());
 
-builder.Services.AddScoped<IOrderService, OrderService>();
-builder.Services.AddAutoMapper(typeof(Order.Infrastructures.AssemblyReference).Assembly);
+// MediatR
 builder.Services.AddMediatR(cfg =>
-cfg.RegisterServicesFromAssembly(typeof(Order.Application.AssemblyReference).Assembly));
+    cfg.RegisterServicesFromAssembly(typeof(CreateOrderCommand).Assembly));
 
-builder.Services.AddValidatorsFromAssembly(typeof(Order.Application.AssemblyReference).Assembly);
-builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+// FluentValidation
+builder.Services.AddValidatorsFromAssembly(typeof(CreateOrderCommand).Assembly);
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(Order.Application.Behavior.ValidationBehavior<,>));
 
-// MassTransit RabbitMQ Integration with Event Consumers
-builder.Services.AddMassTransitWithRabbitMq("OrderService", x =>
+// MassTransit with Azure Service Bus
+builder.Services.AddSharedBusWithAzureServiceBus(builder.Configuration, "OrderService", x =>
 {
-    // Add event consumers for Customer and Product events
-    x.AddConsumer<CustomerCreatedEventConsumer>();
-    x.AddConsumer<CustomerDeletedEventConsumer>();
-    x.AddConsumer<ProductPriceChangedEventConsumer>();
-    x.AddConsumer<ProductStockUpdatedEventConsumer>();
-    x.AddConsumer<ProductDeletedEventConsumer>();
+    x.AddConsumer<OrderCompletedEventConsumer>();
+    x.AddConsumer<OrderFailedEventConsumer>();
 });
 
-// OpenIddict Validation Configuration
+// Add Saga
+builder.Services.AddOrderSaga(builder.Configuration);
+
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("OrderConnection")!,
+        name: "order-database",
+        tags: new[] { "database", "postgresql" })
+    .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "api" });
+
+builder.Services.AddHealthChecksUI(setup =>
+{
+    setup.SetEvaluationTimeInSeconds(30);
+    setup.AddHealthCheckEndpoint("Order API", "/health");
+}).AddInMemoryStorage();
+
+// OpenIddict Validation
 builder.Services.AddOpenIddict()
     .AddValidation(options =>
     {
-        // Set the issuer (AuthServer URL)
-        options.SetIssuer("http://auhtserver.api:8080/");
+        options.SetIssuer("http://authserver.api:8080/");
         options.AddAudiences("order-api");
-
-        // Configure introspection endpoint
         options.UseIntrospection()
                .SetClientId("order-api")
                .SetClientSecret("order-secret-key-2024");
-
         options.UseAspNetCore();
     });
 
-// Configure authentication to use OpenIddict
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
@@ -59,37 +69,72 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
-    // Scope-based policies
-    options.AddPolicy("OrderRead", policy => 
-        policy.RequireClaim("scope", "order.read"));
-    
-    options.AddPolicy("OrderWrite", policy => 
-        policy.RequireClaim("scope", "order.write"));
-    
-    // Role-based policies (for backward compatibility)
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("UserOnly", policy => policy.RequireRole("User"));
-    options.AddPolicy("StaffOnly", policy => policy.RequireRole("Staff"));
-    options.AddPolicy("ManagerOnly", policy => policy.RequireRole("Manager"));
+    options.AddPolicy("OrderRead", policy => policy.RequireClaim("scope", "order.read"));
+    options.AddPolicy("OrderWrite", policy => policy.RequireClaim("scope", "order.write"));
 });
 
-builder.Services.AddEndpointsApiExplorer();
+// OpenAPI
 builder.Services.AddOpenApi();
-builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure pipeline
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+// Minimal API Endpoints
+var ordersGroup = app.MapGroup("/api/orders")
+    .WithTags("Orders")
+    .WithOpenApi();
+
+// POST /api/orders - Create Order
+ordersGroup.MapPost("/", async (CreateOrderCommand command, IMediator mediator) =>
+{
+    var result = await mediator.Send(command);
+    return Results.Created($"/api/orders/{result.OrderId}", result);
+})
+.RequireAuthorization("OrderWrite")
+.WithName("CreateOrder")
+.WithSummary("Create a new order")
+.WithDescription("Creates a new order and initiates the saga orchestration process");
+
+// GET /api/orders/{id} - Get Order
+ordersGroup.MapGet("/{id:guid}", async (Guid id, IMediator mediator) =>
+{
+    var query = new GetOrderQuery { Id = id };
+    var result = await mediator.Send(query);
+    return result is not null ? Results.Ok(result) : Results.NotFound();
+})
+.RequireAuthorization("OrderRead")
+.WithName("GetOrder")
+.WithSummary("Get order by ID")
+.WithDescription("Retrieves order details by order ID");
+
+// Health Check Endpoints
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecksUI(options =>
+{
+    options.UIPath = "/health-ui";
+    options.ApiPath = "/health-api";
+});
+
+// Apply migrations on startup (for development)
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
+    await context.Database.MigrateAsync();
+}
 
 app.Run();
