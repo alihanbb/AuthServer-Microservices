@@ -1,11 +1,10 @@
-﻿using Authserver.Application.DTOs;
-using AuthServerDomain.Entities;
+using AuthServer.Application.DTOs;
+using AuthServer.Domain.Entities;
 
-namespace Authserver.Application.Interfaces
+namespace AuthServer.Application.Interfaces;
+
+public interface ITokenService
 {
-    public interface ITokenService
-    {
-        Task<TokenDto> GenerateToken(AppUser user, IList<string> roles);
-        RefreshToken GenerateRefreshToken();
-    }
+    Task<TokenDto> GenerateToken(AppUser user, IList<string> roles);
+    RefreshToken GenerateRefreshToken();
 }

@@ -1,12 +1,11 @@
-﻿using Authserver.Application.DTOs;
+using AuthServer.Application.DTOs;
 
-namespace Authserver.Application.Interfaces
+namespace AuthServer.Application.Interfaces;
+
+public interface IAuthService
 {
-    public interface IAuthService
-    {
-        Task<TokenDto> LoginAsync(LoginRequestDto loginDto);
-        Task RegisterAsync(UserRegisterDto registerDto);
-        Task<TokenDto> RefreshTokenAsync(string refreshToken);
-        Task RevokeTokenAsync(RevokeRequestDto revokeRequestDto);
-    }
+    Task<TokenDto> LoginAsync(LoginRequestDto loginDto);
+    Task RegisterAsync(UserRegisterDto registerDto);
+    Task<TokenDto> RefreshTokenAsync(string refreshToken);
+    Task RevokeTokenAsync(RevokeRequestDto revokeRequestDto);
 }

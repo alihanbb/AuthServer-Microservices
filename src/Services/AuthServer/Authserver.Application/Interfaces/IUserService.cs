@@ -1,13 +1,12 @@
-﻿using AuthServerDomain.Entities;
+using AuthServer.Domain.Entities;
 
-namespace Authserver.Application.Interfaces
+namespace AuthServer.Application.Interfaces;
+
+public interface IUserService
 {
-    public interface IUserService
-    {
-        Task<AppUser?> GetByUsernameAsync(string username);
-        Task<AppUser?> GetByIdAsync(Guid id);
-        Task AddUserAsync(AppUser user, string password);
-        Task UpdateUserAsync(object user);
-        Task<AppUser> GetByRefreshTokenAsync(string refreshToken);
-    }
+    Task<AppUser?> GetByUsernameAsync(string username);
+    Task<AppUser?> GetByIdAsync(Guid id);
+    Task AddUserAsync(AppUser user, string password);
+    Task UpdateUserAsync(AppUser user);
+    Task<AppUser?> GetByRefreshTokenAsync(string refreshToken);
 }

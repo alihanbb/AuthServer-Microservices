@@ -1,8 +1,7 @@
-﻿namespace Authserver.Application.Interfaces
+namespace AuthServer.Application.Interfaces;
+
+public interface IPasswordHasher
 {
-    public interface IPasswordHasher
-    {
-        string HashPassword(string password);
-        bool VerifyPassword(string hash, string password);
-    }
+    string HashPassword(string password);
+    bool VerifyPassword(string hash, string password);
 }

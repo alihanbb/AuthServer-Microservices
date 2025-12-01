@@ -1,6 +1,0 @@
-@AuhtServer.Api_HostAddress = http://localhost:5241
-
-GET {{AuhtServer.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

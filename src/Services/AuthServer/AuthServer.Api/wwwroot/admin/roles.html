@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Role Management - AuthServer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light-gray: #f1f5f9;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: var(--dark);
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--gray);
+        }
+
+        .auth-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .auth-form {
+            display: flex;
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .form-group {
+            flex: 1;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 1.5rem;
+        }
+
+        .card-header h2 {
+            font-size: 1.25rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-small {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .role-item, .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            transition: all 0.3s;
+        }
+
+        .role-item:hover, .user-item:hover {
+            border-color: var(--primary);
+            background: var(--light-gray);
+        }
+
+        .role-name {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .role-badge {
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid var(--success);
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid var(--danger);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-roles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray);
+        }
+
+        .spinner {
+            border: 3px solid var(--light-gray);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Role Management Panel</h1>
+            <p>AuthServer Admin Dashboard - Manage roles and user permissions</p>
+        </div>
+
+        <div class="auth-section">
+            <h3 style="margin-bottom: 1rem;">🔑 Login Required</h3>
+            <div id="loginForm">
+                <div class="auth-form">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="username" placeholder="Enter username">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Enter password">
+                    </div>
+                    <button class="btn btn-primary" onclick="login()">Login</button>
+                </div>
+            </div>
+            <div id="loggedInUser" style="display: none;">
+                <p>Logged in as: <strong id="currentUser"></strong></p>
+                <button class="btn btn-danger btn-small" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div id="alerts"></div>
+
+        <div id="mainContent" style="display: none;">
+            <div class="grid">
+                <!-- Create Role Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>➕ Create New Role</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Role Name</label>
+                            <input type="text" id="newRoleName" placeholder="Enter role name">
+                        </div>
+                        <button class="btn btn-success" onclick="createRole()" style="margin-top: 1rem; width: 100%;">
+                            Create Role
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Roles List Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📋 All Roles</h2>
+                    </div>
+                    <div class="card-body" id="rolesList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading roles...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assign Role Section -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>👥 Assign Role to User</h2>
+                </div>
+                <div class="card-body">
+                    <div style="display: flex; gap: 1rem;">
+                        <div class="form-group">
+                            <label>User ID</label>
+                            <input type="text" id="assignUserId" placeholder="Enter user GUID">
+                        </div>
+                        <div class="form-group">
+                            <label>Role Name</label>
+                            <input type="text" id="assignRoleName" placeholder="Enter role name">
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: end;">
+                            <button class="btn btn-success" onclick="assignRole()">Assign</button>
+                            <button class="btn btn-danger" onclick="removeRole()">Remove</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let authToken = localStorage.getItem('authToken');
+
+        // Check if already logged in
+        if (authToken) {
+            showMainContent();
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    authToken = data.accessToken;
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('username', username);
+                    showAlert('Login successful! Welcome ' + username, 'success');
+                    showMainContent();
+                    loadRoles();
+                } else {
+                    showAlert('Login failed. Please check your credentials.', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('username');
+            authToken = null;
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('loggedInUser').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'none';
+            showAlert('Logged out successfully', 'success');
+        }
+
+        function showMainContent() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('loggedInUser').style.display = 'block';
+            document.getElementById('currentUser').textContent = localStorage.getItem('username') || 'User';
+            document.getElementById('mainContent').style.display = 'block';
+            loadRoles();
+        }
+
+        async function createRole() {
+            const roleName = document.getElementById('newRoleName').value;
+            if (!roleName) {
+                showAlert('Please enter a role name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/role/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(roleName)
+                });
+
+                if (response.ok) {
+                    showAlert(`Role "${roleName}" created successfully!`, 'success');
+                    document.getElementById('newRoleName').value = '';
+                    loadRoles();
+                } else {
+                    const error = await response.text();
+                    showAlert('Error creating role: ' + error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function assignRole() {
+            const userId = document.getElementById('assignUserId').value;
+            const roleName = document.getElementById('assignRoleName').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/role/assign?userId=${userId}&roleName=${roleName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    showAlert(`Role "${roleName}" assigned to user successfully!`, 'success');
+                } else {
+                    const error = await response.text();
+                    showAlert('Error assigning role: ' + error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function removeRole() {
+            const userId = document.getElementById('assignUserId').value;
+            const roleName = document.getElementById('assignRoleName').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/role/remove?userId=${userId}&roleName=${roleName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    showAlert(`Role "${roleName}" removed from user successfully!`, 'success');
+                } else {
+                    const error = await response.text();
+                    showAlert('Error removing role: ' + error, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function loadRoles() {
+            const rolesList = document.getElementById('rolesList');
+            rolesList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading roles...</p></div>';
+
+            // Note: You would need to add a GET endpoint for roles in your API
+            // For now, showing static roles
+            setTimeout(() => {
+                rolesList.innerHTML = `
+                    <div class="role-item">
+                        <div>
+                            <div class="role-name">Admin</div>
+                            <small style="color: var(--gray);">Full system access</small>
+                        </div>
+                        <span class="role-badge">System Role</span>
+                    </div>
+                    <div class="role-item">
+                        <div>
+                            <div class="role-name">User</div>
+                            <small style="color: var(--gray);">Basic user access</small>
+                        </div>
+                        <span class="role-badge">Default</span>
+                    </div>
+                    <p style="color: var(--gray); margin-top: 1rem;">
+                        <small>💡 Tip: Add a GET endpoint to /api/role/all to load roles dynamically</small>
+                    </p>
+                `;
+            }, 500);
+        }
+
+        function showAlert(message, type) {
+            const alerts = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alerts.appendChild(alert);
+
+            setTimeout(() => alert.classList.add('show'), 10);
+
+            setTimeout(() => {
+                alert.classList.remove('show');
+                setTimeout(() => alert.remove(), 300);
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
